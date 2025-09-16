@@ -1,59 +1,102 @@
-import pickle
 import streamlit as st
-import requests
+import pickle
+import pandas as pd
 
-def fetch_poster(movie_id):
-    url = "https://api.themoviedb.org/3/movie/{}?api_key=8265bd1679663a7ea12ac168da84d2e8&language=en-US".format(movie_id)
-    data = requests.get(url)
-    data = data.json()
-    poster_path = data['poster_path']
-    full_path = "https://image.tmdb.org/t/p/w500/" + poster_path
-    return full_path
-
+# Function to get recommendations
 def recommend(movie):
-    index = movies[movies['title'] == movie].index[0]
-    distances = sorted(list(enumerate(similarity[index])), reverse=True, key=lambda x: x[1])
-    recommended_movie_names = []
-    recommended_movie_posters = []
-    for i in distances[1:6]:
-        # fetch the movie poster
-        movie_id = movies.iloc[i[0]].movie_id
-        recommended_movie_posters.append(fetch_poster(movie_id))
-        recommended_movie_names.append(movies.iloc[i[0]].title)
+    """
+    Takes a movie title and returns a list of 5 recommended movie titles.
+    """
+    try:
+        # Find the index of the movie in the dataframe
+        movie_index = movies[movies['title'] == movie].index[0]
+        
+        # Get the similarity scores for the movie
+        distances = similarity[movie_index]
+        
+        # Sort the movies based on similarity, get top 5
+        movies_list = sorted(list(enumerate(distances)), reverse=True, key=lambda x: x[1])[1:6]
+        
+        recommended_movies = []
+        for i in movies_list:
+            recommended_movies.append(movies.iloc[i[0]].title)
+        return recommended_movies
+    except IndexError:
+        return []
 
-    return recommended_movie_names,recommended_movie_posters
+# --- Load Data ---
+# Load the movies dataframe
+try:
+    movies_dict = pickle.load(open('movies.pkl', 'rb'))
+    movies = pd.DataFrame(movies_dict)
+except FileNotFoundError:
+    st.error("The 'movies.pkl' file was not found. Please make sure it's in the same directory.")
+    st.stop()
+
+# Load the similarity matrix
+try:
+    similarity = pickle.load(open('similarity.pkl', 'rb'))
+except FileNotFoundError:
+    st.error("The 'similarity.pkl' file was not found. Please generate it from your notebook.")
+    st.stop()
 
 
-st.header('Movie Recommender System')
-movies = pickle.load(open('model/movie_list.pkl','rb'))
-similarity = pickle.load(open('model/similarity.pkl','rb'))
+# --- Streamlit Web App Interface ---
 
-movie_list = movies['title'].values
-selected_movie = st.selectbox(
-    "Type or select a movie from the dropdown",
-    movie_list
+st.set_page_config(page_title="Movie Recommender", layout="wide")
+
+# Custom CSS for styling
+st.markdown("""
+<style>
+    .stApp {
+        background-color: #1a1a1a;
+        color: #e6e6e6;
+    }
+    .stSelectbox > div > div > div {
+        background-color: #333333;
+    }
+    .stButton>button {
+        background-color: #007bff;
+        color: white;
+        border-radius: 8px;
+        border: none;
+        padding: 10px 20px;
+    }
+    .stButton>button:hover {
+        background-color: #0056b3;
+        color: white;
+    }
+    h1 {
+        color: #007bff;
+    }
+    .movie-title {
+        font-size: 1.1em;
+        font-weight: bold;
+        margin-top: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.title('Movie Recommender System')
+
+# Movie selection dropdown
+selected_movie_name = st.selectbox(
+    "Type or select a movie you like:",
+    movies['title'].values
 )
 
-if st.button('Show Recommendation'):
-    recommended_movie_names,recommended_movie_posters = recommend(selected_movie)
-    col1, col2, col3, col4, col5 = st.beta_columns(5)
-    with col1:
-        st.text(recommended_movie_names[0])
-        st.image(recommended_movie_posters[0])
-    with col2:
-        st.text(recommended_movie_names[1])
-        st.image(recommended_movie_posters[1])
-
-    with col3:
-        st.text(recommended_movie_names[2])
-        st.image(recommended_movie_posters[2])
-    with col4:
-        st.text(recommended_movie_names[3])
-        st.image(recommended_movie_posters[3])
-    with col5:
-        st.text(recommended_movie_names[4])
-        st.image(recommended_movie_posters[4])
-
-
-
-
+# Recommend button
+if st.button('Recommend'):
+    recommendations = recommend(selected_movie_name)
+    if recommendations:
+        st.success(f"Because you watched '{selected_movie_name}', you might also like:")
+        
+        # Display recommendations in columns
+        cols = st.columns(5)
+        for i, movie_title in enumerate(recommendations):
+            with cols[i]:
+                st.markdown(f"<div class='movie-title'>{movie_title}</div>", unsafe_allow_html=True)
+                # You can add movie posters here in the future if you have the image URLs
+                # st.image("poster_url.jpg")
+    else:
+        st.warning("Could not find recommendations for the selected movie.")
